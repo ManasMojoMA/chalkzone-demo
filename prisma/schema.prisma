@@ -1,0 +1,815 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [vector]
+}
+
+// ─── CORE / AUTH ─────────────────────────────────────────────────────────────
+
+enum Role {
+  STUDENT
+  FACULTY
+  HR
+  MANAGER
+  ADMIN
+  SUPER_ADMIN
+  PARENT
+  EXECUTIVE
+}
+
+enum StudentStatus {
+  ACTIVE
+  ALUMNI
+  SUSPENDED
+}
+
+enum ApplicationStatus {
+  APPLIED
+  SHORTLISTED
+  INTERVIEW_SCHEDULED
+  INTERVIEWED
+  OFFERED
+  OFFER_ACCEPTED
+  OFFER_DECLINED
+  REJECTED
+  WITHDRAWN
+}
+
+enum InternshipStatus {
+  PENDING
+  ONGOING
+  COMPLETED
+}
+
+enum CycleStatus {
+  DRAFT
+  OPEN
+  CLOSED
+}
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+}
+
+model User {
+  id           String    @id @default(cuid())
+  supabaseUid  String?   @unique @map("supabase_uid")
+  email        String    @unique
+  name         String?
+  mobile       String?
+  role         Role      @default(STUDENT)
+  isActive     Boolean   @default(true) @map("is_active")
+  hasSeenTour  Boolean   @default(false) @map("has_seen_tour")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  studentProfile StudentProfile?
+  facultyProfile FacultyProfile?
+  hrProfile      HRProfile?
+  
+  ticketsCreated Ticket[]        @relation("TicketCreator")
+  ticketsAssigned Ticket[]       @relation("TicketAssignee")
+  ticketMessages TicketMessage[]
+
+  ticketParticipations TicketParticipant[]      @relation("ParticipantUser")
+  participantsAdded    TicketParticipant[]      @relation("ParticipantAddedBy")
+  internalNotes        TicketInternalNote[]
+  ticketAttachments    TicketAttachment[]
+  categoryOwnerships   StaffCategoryOwnership[]
+  escalationCategories TicketCategory[]         @relation("CategoryEscalationUser")
+  notifications        Notification[]
+  announcements        Announcement[]
+
+  @@map("users")
+}
+
+// ─── NOTIFICATIONS ──────────────────────────────────────────────────────────
+
+enum NotificationType {
+  TICKET
+  APPLICATION
+  APPRAISAL
+  ANNOUNCEMENT
+  SYSTEM
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String           @map("user_id")
+  type      NotificationType @default(SYSTEM)
+  title     String
+  body      String?
+  link      String? // in-app path the notification navigates to
+  isRead    Boolean          @default(false) @map("is_read")
+  createdAt DateTime         @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ─── ANNOUNCEMENTS ──────────────────────────────────────────────────────────
+
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String
+  contentHtml String   @map("content_html") // sanitized rich text
+  bannerPath  String?  @map("banner_path") // Storage path for banner image
+  category    String   @default("ALERTS") // ACADEMICS | PLACEMENTS | EVENTS | ALERTS
+  authorId    String   @map("author_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  author  User                 @relation(fields: [authorId], references: [id])
+  targets AnnouncementTarget[]
+
+  @@map("announcements")
+}
+
+// One row per targeting rule; null field = "all" at that level. An
+// announcement with a single all-null target row is campus-wide.
+model AnnouncementTarget {
+  id             String  @id @default(cuid())
+  announcementId String  @map("announcement_id")
+  program        String? // matches StudentProfile.program
+  semester       Int? // matches StudentProfile.currentSemester
+  section        String? // matches StudentProfile.section
+  subjectId      String? @map("subject_id") // course-level targeting
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  subject      Subject?     @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@index([announcementId])
+  @@map("announcement_targets")
+}
+
+// ─── PROFILES ───────────────────────────────────────────────────────────────
+
+model StudentProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique @map("user_id")
+  rollNo         String?  @unique @map("roll_no")
+  mobile         String?
+  program        String?
+  batchId        String?  @map("batch_id") // master roster anchor (programme + intake)
+  admissionYear  Int?     @map("admission_year")
+  currentSemester Int?    @map("current_semester")
+  section        String?
+  sectionId      String?  @map("section_id") // "home" core section link to ProgramSection
+  cgpa           Float?   @default(0)
+  status         StudentStatus @default(ACTIVE)
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  batch          Batch?   @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  linkedSection  ProgramSection? @relation("SectionStudents", fields: [sectionId], references: [id], onDelete: SetNull)
+  sectionMemberships SectionMembership[]
+
+  resumes        Resume[]
+  internships    Internship[]
+  jobApplications JobApplication[]
+  attendances    Attendance[]
+  sessionAttendance SessionAttendance[]
+  marks          Marks[]
+  courseEnrollments CourseEnrollment[]
+
+  @@index([batchId])
+  @@map("student_profiles")
+}
+
+model FacultyProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique @map("user_id")
+  employeeCode   String?  @unique @map("employee_code")
+  department     String?
+  designation    String?
+  mobile         String?
+  
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  appraisalSubmissions FacultySubmission[]
+  appraisalEvaluations FacultyEvaluation[]
+  internshipsMentored  Internship[] @relation("FacultyMentor")
+  teachingAssignments  SectionCourseAssignment[]
+
+  @@map("faculty_profiles")
+}
+
+model HRProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique @map("user_id")
+  companyId      String   @map("company_id")
+  designation    String?
+  mobile         String?
+  
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company        Company  @relation(fields: [companyId], references: [id])
+
+  @@index([companyId])
+  @@map("hr_profiles")
+}
+
+// ─── ACADEMICS (Attendance & Performance) ───────────────────────────────────
+
+// The master course catalogue (Configuration → Course Master). A course is
+// authored once here and IMPORTED into any programme that teaches it — each
+// import creates its own Subject "copy" so editing/deleting it in one
+// programme never touches the master or any other programme's copy.
+// Re-importing refreshes a copy's name/credits from the current master.
+model CourseMaster {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  credits   Float
+  createdAt DateTime @default(now()) @map("created_at")
+
+  copies Subject[]
+
+  @@map("course_master")
+}
+
+model Subject {
+  id             String   @id @default(cuid())
+  programId      String   @map("program_id")
+  courseMasterId String?  @map("course_master_id") // origin master course, if imported (null for legacy rows)
+  semester       Int?
+  code           String
+  name           String
+  credits        Float
+
+  program      Program       @relation(fields: [programId], references: [id])
+  courseMaster CourseMaster? @relation(fields: [courseMasterId], references: [id], onDelete: SetNull)
+  attendances Attendance[]
+  marks       Marks[]
+  announcementTargets AnnouncementTarget[]
+  sectionAssignments  SectionCourseAssignment[]
+  courseEnrollments   CourseEnrollment[]
+
+  @@unique([programId, code]) // same code can exist in different programmes, never twice in one
+  @@index([programId])
+  @@index([courseMasterId])
+  @@map("subjects")
+}
+
+model Attendance {
+  id               String   @id @default(cuid())
+  studentProfileId String   @map("student_profile_id")
+  subjectId        String   @map("subject_id")
+  semester         Int
+  totalClasses     Int      @default(0) @map("total_classes")
+  attendedClasses  Int      @default(0) @map("attended_classes")
+  percentage       Float    @default(0)
+  
+  student          StudentProfile @relation(fields: [studentProfileId], references: [id])
+  subject          Subject        @relation(fields: [subjectId], references: [id])
+
+  @@unique([studentProfileId, subjectId, semester])
+  @@index([subjectId])
+  @@map("attendances")
+}
+
+model Marks {
+  id               String   @id @default(cuid())
+  studentProfileId String   @map("student_profile_id")
+  subjectId        String   @map("subject_id")
+  semester         Int
+  internalMarks    Float    @default(0) @map("internal_marks")
+  externalMarks    Float    @default(0) @map("external_marks")
+  practicalMarks   Float    @default(0) @map("practical_marks")
+  totalMarks       Float    @default(0) @map("total_marks")
+  grade            String?
+  gradePoint       Float    @default(0) @map("grade_point")
+  
+  student          StudentProfile @relation(fields: [studentProfileId], references: [id])
+  subject          Subject        @relation(fields: [subjectId], references: [id])
+
+  @@unique([studentProfileId, subjectId, semester])
+  @@index([subjectId])
+  @@map("marks")
+}
+
+// ─── TICKETING SYSTEM ───────────────────────────────────────────────────────
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_STUDENT
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model TicketCategory {
+  id               String  @id @default(cuid())
+  name             String  @unique // IT, Finance, Academics, Placements, Hostel
+  description      String?
+  slaHours         Int     @default(48) @map("sla_hours")
+  escalationRole   Role?   @default(MANAGER) @map("escalation_role")
+  escalationUserId String? @map("escalation_user_id")
+
+  escalationUser User?                    @relation("CategoryEscalationUser", fields: [escalationUserId], references: [id], onDelete: SetNull)
+  staffOwners    StaffCategoryOwnership[]
+  tickets        Ticket[]
+
+  @@map("ticket_categories")
+}
+
+// Which staff members own/handle which ticket category (powers the
+// reassignment picker and default routing)
+model StaffCategoryOwnership {
+  id         String @id @default(cuid())
+  userId     String @map("user_id")
+  categoryId String @map("category_id")
+
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryId])
+  @@index([categoryId])
+  @@map("staff_category_ownership")
+}
+
+model Ticket {
+  id          String         @id @default(cuid())
+  title       String
+  description String
+  status      TicketStatus   @default(OPEN)
+  priority    TicketPriority @default(MEDIUM)
+  categoryId  String         @map("category_id")
+  creatorId   String         @map("creator_id")
+  assigneeId  String?        @map("assignee_id")
+  aiResolved  Boolean        @default(false) @map("ai_resolved")
+  slaDeadline DateTime?      @map("sla_deadline") // createdAt + category.slaHours
+  escalatedAt DateTime?      @map("escalated_at") // set once when SLA breach is first detected
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  category      TicketCategory       @relation(fields: [categoryId], references: [id])
+  creator       User                 @relation("TicketCreator", fields: [creatorId], references: [id])
+  assignee      User?                @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  messages      TicketMessage[]
+  participants  TicketParticipant[]
+  internalNotes TicketInternalNote[]
+  attachments   TicketAttachment[]
+
+  @@index([creatorId])
+  @@index([assigneeId])
+  @@index([categoryId])
+  @@map("tickets")
+}
+
+model TicketMessage {
+  id        String   @id @default(cuid())
+  ticketId  String   @map("ticket_id")
+  senderId  String?  @map("sender_id") // Null means AI generated
+  isAi      Boolean  @default(false) @map("is_ai")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender    User?    @relation(fields: [senderId], references: [id])
+
+  @@index([ticketId])
+  @@map("ticket_messages")
+}
+
+// Staff SPOCs tagged into a ticket's internal discussion
+model TicketParticipant {
+  id        String   @id @default(cuid())
+  ticketId  String   @map("ticket_id")
+  userId    String   @map("user_id")
+  addedById String   @map("added_by_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  ticket  Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user    User   @relation("ParticipantUser", fields: [userId], references: [id], onDelete: Cascade)
+  addedBy User   @relation("ParticipantAddedBy", fields: [addedById], references: [id])
+
+  @@unique([ticketId, userId])
+  @@index([userId])
+  @@map("ticket_participants")
+}
+
+// Staff-only discussion thread, never visible to the ticket creator
+model TicketInternalNote {
+  id        String   @id @default(cuid())
+  ticketId  String   @map("ticket_id")
+  authorId  String   @map("author_id")
+  content   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  ticket      Ticket             @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author      User               @relation(fields: [authorId], references: [id])
+  attachments TicketAttachment[]
+
+  @@index([ticketId])
+  @@map("ticket_internal_notes")
+}
+
+model TicketAttachment {
+  id             String   @id @default(cuid())
+  ticketId       String   @map("ticket_id")
+  internalNoteId String?  @map("internal_note_id") // null = student-visible main thread
+  storagePath    String   @map("storage_path")
+  filename       String
+  sizeBytes      Int      @map("size_bytes")
+  uploadedById   String   @map("uploaded_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  ticket       Ticket              @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  internalNote TicketInternalNote? @relation(fields: [internalNoteId], references: [id], onDelete: Cascade)
+  uploadedBy   User                @relation(fields: [uploadedById], references: [id])
+
+  @@index([ticketId])
+  @@map("ticket_attachments")
+}
+
+// ─── PLACEMENTS & INTERNSHIPS ───────────────────────────────────────────────
+
+model Company {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  website     String?
+  
+  hrProfiles  HRProfile[]
+  jobPostings JobPosting[]
+
+  @@map("companies")
+}
+
+model JobPosting {
+  id          String   @id @default(cuid())
+  companyId   String   @map("company_id")
+  title       String
+  description String
+  eligibility Json?    // Min CGPA, Branches, etc
+  deadline    DateTime?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  company      Company          @relation(fields: [companyId], references: [id])
+  applications JobApplication[]
+
+  @@index([companyId])
+  @@map("job_postings")
+}
+
+model JobApplication {
+  id               String   @id @default(cuid())
+  jobPostingId     String   @map("job_posting_id")
+  studentProfileId String   @map("student_profile_id")
+  resumeId         String?  @map("resume_id")
+  status           ApplicationStatus @default(APPLIED)
+  appliedAt        DateTime @default(now()) @map("applied_at")
+
+  jobPosting JobPosting     @relation(fields: [jobPostingId], references: [id])
+  student    StudentProfile @relation(fields: [studentProfileId], references: [id])
+  resume     Resume?        @relation(fields: [resumeId], references: [id])
+
+  @@unique([jobPostingId, studentProfileId])
+  @@index([studentProfileId])
+  @@map("job_applications")
+}
+
+model Internship {
+  id               String   @id @default(cuid())
+  studentProfileId String   @map("student_profile_id")
+  companyName      String   @map("company_name")
+  designation      String?
+  startDate        DateTime @map("start_date")
+  endDate          DateTime @map("end_date")
+  facultyMentorId  String?  @map("faculty_mentor_id")
+  status           InternshipStatus @default(PENDING)
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  student        StudentProfile  @relation(fields: [studentProfileId], references: [id])
+  facultyMentor  FacultyProfile? @relation("FacultyMentor", fields: [facultyMentorId], references: [id])
+
+  @@index([studentProfileId])
+  @@index([facultyMentorId])
+  @@map("internships")
+}
+
+// ─── RESUME BUILDER ─────────────────────────────────────────────────────────
+
+model Resume {
+  id               String   @id @default(cuid())
+  studentProfileId String   @map("student_profile_id")
+  title            String
+  dataJson         Json     @map("data_json") // Stores the entire structured resume JSON
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  student          StudentProfile   @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  jobApplications  JobApplication[]
+
+  @@index([studentProfileId])
+  @@map("resumes")
+}
+
+// ─── FACULTY APPRAISAL ──────────────────────────────────────────────────────
+
+model AppraisalCycle {
+  id          String   @id @default(cuid())
+  name        String
+  startDate   DateTime @map("start_date")
+  endDate     DateTime @map("end_date")
+  status      CycleStatus @default(DRAFT)
+  
+  submissions FacultySubmission[]
+  evaluations FacultyEvaluation[]
+
+  @@map("appraisal_cycles")
+}
+
+model FacultySubmission {
+  id               String   @id @default(cuid())
+  cycleId          String   @map("cycle_id")
+  facultyProfileId String   @map("faculty_profile_id")
+  status           SubmissionStatus @default(DRAFT)
+  dataJson         Json     @map("data_json")
+  submittedAt      DateTime? @map("submitted_at")
+
+  cycle            AppraisalCycle  @relation(fields: [cycleId], references: [id])
+  faculty          FacultyProfile  @relation(fields: [facultyProfileId], references: [id])
+  evaluation       FacultyEvaluation?
+
+  @@unique([cycleId, facultyProfileId])
+  @@index([facultyProfileId])
+  @@map("faculty_submissions")
+}
+
+model FacultyEvaluation {
+  id               String   @id @default(cuid())
+  cycleId          String   @map("cycle_id")
+  submissionId     String   @unique @map("submission_id")
+  facultyProfileId String   @map("faculty_profile_id")
+  finalScore       Float?   @map("final_score")
+  evaluatorNotes   String?  @map("evaluator_notes")
+  
+  cycle            AppraisalCycle     @relation(fields: [cycleId], references: [id])
+  submission       FacultySubmission  @relation(fields: [submissionId], references: [id])
+  faculty          FacultyProfile     @relation(fields: [facultyProfileId], references: [id])
+
+  @@index([facultyProfileId])
+  @@index([cycleId])
+  @@map("faculty_evaluations")
+}
+
+// ─── TIMETABLE ──────────────────────────────────────────────────────────────
+
+enum SectionType {
+  CORE
+  ELECTIVE
+  MIXED
+}
+
+model Program {
+  id            String  @id @default(cuid())
+  name          String  @unique
+  code          String? @unique
+  credits       Float?
+  department    String?
+  totalStudents Int     @default(0) @map("total_students") // legacy; student counts now live per-batch
+
+  sections ProgramSection[]
+  subjects Subject[]
+  batches  Batch[]
+
+  @@map("programs")
+}
+
+// Reusable section names (Configuration → Section Labels), e.g. "A", "B",
+// "Elective-AI" — mapped into a concrete ProgramSection per batch+semester.
+model SectionLabel {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  sections ProgramSection[]
+
+  @@map("section_labels")
+}
+
+model ProgramSection {
+  id           String      @id @default(cuid())
+  programId    String      @map("program_id")
+  batchId      String      @map("batch_id")
+  labelId      String?     @map("label_id") // origin SectionLabel, if created via the catalogue
+  semester     Int
+  name         String // "A", "B", "Elective-AI"
+  type         SectionType @default(CORE)
+  studentCount Int         @default(0) @map("student_count")
+  // First day of this section's 5-consecutive-day attendance window
+  // (university runs 7 days; every section attends 5): MON..SUN
+  weekStart    String      @default("MON") @map("week_start")
+
+  program     Program                   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  batch       Batch                     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  label       SectionLabel?             @relation(fields: [labelId], references: [id], onDelete: SetNull)
+  assignments SectionCourseAssignment[]
+  slots       TimetableSlot[]
+  students    StudentProfile[]          @relation("SectionStudents")
+  courseEnrollments CourseEnrollment[]
+  memberships       SectionMembership[]
+
+  @@unique([batchId, semester, name])
+  @@index([programId])
+  @@map("program_sections")
+}
+
+// Which faculty teaches which course in which section (also serves as the
+// section↔course enrollment map)
+model SectionCourseAssignment {
+  id               String @id @default(cuid())
+  sectionId        String @map("section_id")
+  subjectId        String @map("subject_id")
+  facultyProfileId String @map("faculty_profile_id")
+  weeklyHours      Int    @default(3) @map("weekly_hours")
+
+  section ProgramSection  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  subject Subject         @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  faculty FacultyProfile  @relation(fields: [facultyProfileId], references: [id], onDelete: Cascade)
+  slots   TimetableSlot[]
+  sessions ClassSession[]
+
+  @@unique([sectionId, subjectId])
+  @@index([facultyProfileId])
+  @@map("section_course_assignments")
+}
+
+// ─── Session-based attendance ───────────────────────────────────────────────
+// A ClassSession is one meeting of a course-section on a date & period. Its
+// roster is the students enrolled (CourseEnrollment) in that section+subject.
+// SessionAttendance stores present/absent per student; the aggregate
+// Attendance row is recomputed from these as a cache for fast display.
+
+model ClassSession {
+  id           String   @id @default(cuid())
+  assignmentId String   @map("assignment_id")
+  date         DateTime @db.Date
+  period       Int      @default(1)
+  topic        String?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  assignment SectionCourseAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  records    SessionAttendance[]
+
+  @@unique([assignmentId, date, period])
+  @@index([assignmentId])
+  @@map("class_sessions")
+}
+
+model SessionAttendance {
+  id               String @id @default(cuid())
+  sessionId        String @map("session_id")
+  studentProfileId String @map("student_profile_id")
+  status           String @default("PRESENT") // PRESENT | ABSENT | LATE
+
+  session ClassSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentProfileId])
+  @@index([studentProfileId])
+  @@map("session_attendance")
+}
+
+// Admin-editable weekly teaching-hour caps per faculty designation
+model FacultyDesignationRule {
+  id             String @id @default(cuid())
+  designation    String @unique // matches FacultyProfile.designation
+  maxWeeklyHours Int    @default(16) @map("max_weekly_hours")
+
+  @@map("faculty_designation_rules")
+}
+
+model Classroom {
+  id            String @id @default(cuid())
+  name          String @unique
+  type          String @default("Lecture Hall") // Lecture Hall, Lab, Seminar Room…
+  capacity      Int    @default(60)
+  // Days this room is usable, CSV of MON..SUN
+  availableDays String @default("MON,TUE,WED,THU,FRI,SAT,SUN") @map("available_days")
+
+  slots TimetableSlot[]
+
+  @@map("classrooms")
+}
+
+model TimetableSlot {
+  id           String @id @default(cuid())
+  sectionId    String @map("section_id")
+  assignmentId String @map("assignment_id")
+  classroomId  String @map("classroom_id")
+  day          String // MON..SUN
+  period       Int // 1..8
+
+  section    ProgramSection          @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  assignment SectionCourseAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  classroom  Classroom               @relation(fields: [classroomId], references: [id], onDelete: Cascade)
+
+  @@unique([sectionId, day, period]) // a section can't attend two classes at once
+  @@unique([classroomId, day, period]) // a room can't host two classes at once
+  @@index([assignmentId])
+  @@map("timetable_slots")
+}
+
+// ─── KNOWLEDGE BASE (RAG) ───────────────────────────────────────────────────
+
+model ResourceDocument {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  metadata  Json?
+  embedding Unsupported("vector(768)")?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("resource_documents")
+}
+
+// ─── Academic batches (configured once, reused across programmes) ───────────
+
+model Batch {
+  id        String   @id @default(cuid())
+  programId String   @map("program_id")
+  label     String // e.g. "2025-2027" — the admission→graduation window
+  createdAt DateTime @default(now()) @map("created_at")
+
+  program  Program          @relation(fields: [programId], references: [id], onDelete: Cascade)
+  students StudentProfile[]
+  sections ProgramSection[]
+
+  @@unique([programId, label]) // each programme has its own batch of that label
+  @@map("batches")
+}
+
+// ─── Per-course section enrollment ──────────────────────────────────────────
+// A student attends exactly ONE section per course (unique constraint), but
+// may attend different sections for different courses (core vs electives).
+// StudentProfile.sectionId remains their "home" section; rows here override
+// or extend it course by course.
+
+model CourseEnrollment {
+  id               String   @id @default(cuid())
+  studentProfileId String   @map("student_profile_id")
+  subjectId        String   @map("subject_id")
+  sectionId        String   @map("section_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  subject Subject        @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  section ProgramSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([studentProfileId, subjectId])
+  @@index([sectionId])
+  @@map("course_enrollments")
+}
+
+// Section membership is the PRIMARY placement fact: a student belongs to a
+// section regardless of whether it has courses yet. Course enrollments
+// (above) are derived — when a course is attached to a section, its members
+// are auto-enrolled; joining a section enrolls the student into its current
+// courses. A student has one core-section membership per semester and any
+// number of elective memberships.
+model SectionMembership {
+  id               String   @id @default(cuid())
+  studentProfileId String   @map("student_profile_id")
+  sectionId        String   @map("section_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  student StudentProfile @relation(fields: [studentProfileId], references: [id], onDelete: Cascade)
+  section ProgramSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([studentProfileId, sectionId])
+  @@index([sectionId])
+  @@map("section_memberships")
+}
+
+// ─── Configurable per-role access ───────────────────────────────────────────
+// level: NONE (hidden), VIEW (read-only), EDIT (full). Absence of a row means
+// the role's built-in default applies. SUPER_ADMIN always has full access.
+
+model RolePermission {
+  id      String @id @default(cuid())
+  role    String
+  section String // stable key, e.g. "attendance", "timetable"
+  level   String // NONE | VIEW | EDIT
+
+  @@unique([role, section])
+  @@map("role_permissions")
+}
