@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ChalkZone — Empowering Possibilities at Galgotias",
+  title: "ChalkZone - Empowering Possibilities at Your Institution",
   description:
     "ChalkZone: where learning is drawn and careers begin. Attendance, performance, placements, tickets and an AI assistant — one campus platform.",
 };

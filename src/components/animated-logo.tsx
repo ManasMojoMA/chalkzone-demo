@@ -40,7 +40,7 @@ export function AnimatedLogo({
   return (
     <span
       role="img"
-      aria-label="ChalkZone — SOB, Galgotias University"
+      aria-label="ChalkZone - School of Business"
       className={cn("inline-flex items-center", s.gap, className)}
     >
       {/* Board icon — red brand frame, slate-green board, self-drawing chalk */}
@@ -125,7 +125,7 @@ export function AnimatedLogo({
               s.tag
             )}
           >
-            SOB, Galgotias University
+            School of Business
           </span>
         )}
       </span>

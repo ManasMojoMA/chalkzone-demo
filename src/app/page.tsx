@@ -41,7 +41,7 @@ export default function LandingPage() {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 text-accent font-medium text-sm mb-8 border border-accent/20"
           >
             <Sparkles className="h-4 w-4" />
-            Empowering Possibilities at Galgotias
+            Empowering Possibilities at Your Institution
           </motion.div>
           
           <motion.h1 
