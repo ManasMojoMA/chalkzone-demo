@@ -171,7 +171,7 @@ export default function ResetPasswordPage() {
                 <div className="space-y-2">
                   <Label htmlFor="email" className="font-bold uppercase text-xs tracking-wide text-slate-700">Email Address</Label>
                   <Input
-                    id="email" type="email" required placeholder="name@galgotiasuniversity.ac.in"
+                    id="email" type="email" required placeholder="name@university.edu"
                     className="h-12 border-2 border-slate-900 rounded-lg font-medium"
                     value={email} onChange={(e) => setEmail(e.target.value)}
                   />

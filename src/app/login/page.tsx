@@ -103,7 +103,7 @@ export default function LoginPage() {
           <div className="text-center mb-6">
             <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 text-accent-foreground font-medium text-sm mb-6 border border-accent/40">
               <Sparkles className="h-4 w-4 text-accent" />
-              Empowering Possibilities at Galgotias
+              Empowering Possibilities at Your Institution
             </div>
             {audience === "student" ? (
               <>
@@ -160,7 +160,7 @@ export default function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="name@galgotiasuniversity.ac.in"
+                  placeholder="name@university.edu"
                   className="h-12 border-2 border-slate-900 rounded-lg font-medium focus-visible:ring-primary focus-visible:ring-offset-2"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}

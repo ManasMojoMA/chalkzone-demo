@@ -330,7 +330,7 @@ export default function AdminUsersPage() {
               </div>
               <div className="space-y-1.5 col-span-2">
                 <Label htmlFor="nu-email">Email</Label>
-                <Input id="nu-email" type="email" value={form.email} onChange={set("email")} required placeholder="name@galgotiasuniversity.ac.in" title="Their login email — this becomes their username and can't be changed later" />
+                <Input id="nu-email" type="email" value={form.email} onChange={set("email")} required placeholder="name@university.edu" title="Their login email - this becomes their username and can't be changed later" />
               </div>
               <div className="space-y-1.5 col-span-2">
                 <Label htmlFor="nu-mobile">Mobile number</Label>
@@ -515,8 +515,8 @@ function BulkOnboardDialog({ onClose, onChanged }: { onClose: () => void; onChan
     downloadCsv("chalkzone-onboard-students-template.csv", toCsv(
       ["rollNo", "name", "email", "mobile", "programme", "batch", "password"],
       [
-        ["BBA2026-001", "Aarav Sharma", "aarav.sharma@galgotiasuniversity.edu.in", "9990001111", "BBA", "2026-2029", ""],
-        ["BBA2026-002", "Diya Verma", "diya.verma@galgotiasuniversity.edu.in", "9990002222", "BBA", "2026-2029", ""],
+        ["BBA2026-001", "Aarav Sharma", "aarav.sharma@university.edu", "9990001111", "BBA", "2026-2029", ""],
+        ["BBA2026-002", "Diya Verma", "diya.verma@university.edu", "9990002222", "BBA", "2026-2029", ""],
       ]
     ));
   };
