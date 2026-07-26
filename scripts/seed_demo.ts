@@ -38,10 +38,10 @@ async function main() {
 
   if (authUser) {
     await prisma.user.upsert({
-      where: { id: authUser.id },
-      update: { role: 'ADMIN', isActive: true },
+      where: { email: email },
+      update: { role: 'ADMIN', isActive: true, supabaseUid: authUser.id },
       create: {
-        id: authUser.id,
+        supabaseUid: authUser.id,
         email: email,
         name: 'Demo Admin',
         role: 'ADMIN',
