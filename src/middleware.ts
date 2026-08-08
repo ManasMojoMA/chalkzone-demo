@@ -6,14 +6,17 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * Feel free to modify this pattern to include more paths.
-     */
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
-  ],
+  /*
+   * Only the routes whose behaviour actually depends on who you are.
+   *
+   * This previously matched every path, so the landing page ran an auth check
+   * against Supabase before rendering. On the free tier Supabase pauses after about
+   * a week idle, and that call then hangs until Vercel kills the middleware —
+   * producing a 504 MIDDLEWARE_INVOCATION_TIMEOUT on the *homepage* of an app that
+   * was otherwise perfectly healthy.
+   *
+   * Narrowing it means the public landing page renders no matter what state the
+   * database is in.
+   */
+  matcher: ['/dashboard/:path*', '/login', '/reset-password'],
 }

@@ -30,9 +30,27 @@ export async function updateSession(request: NextRequest) {
   // IMPORTANT: Avoid writing any logic between createServerClient and
   // supabase.auth.getUser(). A simple mistake could make it very hard to debug
   // issues with users being randomly logged out.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  //
+  // Bounded so a slow or paused Supabase project cannot hang the request. Without
+  // this the call blocks until Vercel kills the middleware and serves a 504, which
+  // is a far worse outcome than treating the visitor as signed-out: a signed-out
+  // visitor gets the login page, and one they are already authenticated the next
+  // request (with Supabase awake) restores them.
+  const AUTH_TIMEOUT_MS = 3500
+
+  let user = null
+  try {
+    const result = await Promise.race([
+      supabase.auth.getUser(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('supabase-auth-timeout')), AUTH_TIMEOUT_MS)
+      ),
+    ])
+    user = result.data.user
+  } catch (err) {
+    // Log for observability, but never fail the request over it.
+    console.warn('[middleware] auth check unavailable:', (err as Error).message)
+  }
 
   // "Keep me logged in" OFF: login set a session-scoped marker (cz-eph) and a
   // persistent flag (cz-eph-flag). Flag present without the marker means the

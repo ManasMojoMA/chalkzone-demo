@@ -14,6 +14,7 @@ import { Loader2, ArrowRight, Sparkles, GraduationCap, ShieldCheck } from "lucid
 import { AnimatedLogo } from "@/components/animated-logo";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
+import { DEMO_MODE, DEMO_ROLES, DEMO_GROUPS } from "@/lib/demo-roles";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -31,10 +32,43 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [audience, setAudience] = useState<"student" | "staff">("student");
 
+  const [demoBusy, setDemoBusy] = useState<string | null>(null);
+
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+
+  /**
+   * One-click demo entry, signing in as a pre-seeded account for the chosen role.
+   *
+   * This app's whole point is that the dashboard differs per role, so a demo
+   * exposing a single login would show a fraction of what was built.
+   */
+  const enterAsDemoRole = async (role: (typeof DEMO_ROLES)[number]) => {
+    setDemoBusy(role.key);
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: role.email,
+        password: role.password,
+      });
+      if (error) throw error;
+      if (data.session) {
+        // Demo sessions are deliberately ephemeral: closing the browser ends them,
+        // so a shared machine never leaves the next visitor inside someone's session.
+        document.cookie = "cz-eph=1; path=/";
+        document.cookie = "cz-eph-flag=1; path=/; max-age=2592000";
+        toast.success(`Exploring as ${role.label}`);
+        router.push("/dashboard");
+        loadUser();
+      }
+    } catch {
+      // Never surface the provider's message — it distinguishes "no such user" from
+      // "wrong password", which is free reconnaissance on a public login page.
+      toast.error("Couldn't open that demo account. Please try another role.");
+      setDemoBusy(null);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,10 +241,65 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
+
+            {/* Public demo entry. Grouped rather than eight flat buttons, which
+                would be a wall — and every role is offered because this app's
+                dashboard changes almost entirely depending on who you are. */}
+            {DEMO_MODE && DEMO_ROLES.length > 0 && (
+              <div className="mt-8 pt-6 border-t-2 border-slate-200">
+                <p className="text-sm font-bold text-slate-700">Just looking around?</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Pick a role and you are straight in — no signup, nothing to type. The
+                  dashboard is different for each one.
+                </p>
+
+                {DEMO_GROUPS.map((group) => {
+                  const roles = DEMO_ROLES.filter((r) => r.group === group);
+                  if (roles.length === 0) return null;
+                  return (
+                    <div key={group} className="mt-4">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                        {group}
+                      </p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                        {roles.map((role) => (
+                          <button
+                            key={role.key}
+                            type="button"
+                            onClick={() => enterAsDemoRole(role)}
+                            disabled={demoBusy !== null || isLoading}
+                            title={role.blurb}
+                            className="rounded-lg border-2 border-slate-900 bg-white px-3 py-2 text-left transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(15,23,42,1)] shadow-[4px_4px_0px_0px_rgba(15,23,42,1)] disabled:opacity-50"
+                          >
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-bold text-slate-900">
+                                {role.label}
+                              </span>
+                              {demoBusy === role.key && (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                              )}
+                            </span>
+                            <span className="mt-0.5 block text-[11px] leading-snug text-slate-500">
+                              {role.blurb}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <p className="mt-4 text-[11px] text-slate-400">
+                  Demo data is invented and disposable. Change whatever you like.
+                </p>
+              </div>
+            )}
           </div>
 
           <p className="mt-6 text-center text-sm text-slate-500 font-medium">
-            Access is provisioned by the university. Trouble signing in? Contact the admin office.
+            {DEMO_MODE
+              ? "This is a public demo. Real deployments provision accounts centrally."
+              : "Access is provisioned by the university. Trouble signing in? Contact the admin office."}
           </p>
         </div>
       </main>
